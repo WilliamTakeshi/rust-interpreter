@@ -11,6 +11,12 @@ pub enum TokenType {
     // Operators
     ASSIGN,
     PLUS,
+    MINUS,
+    BANG,
+    ASTERISK,
+    SLASH,
+    LT,
+    GT,
     
     // Delimiters
     COMMA,
@@ -23,6 +29,17 @@ pub enum TokenType {
     // Keywords
     FUNCTION,
     LET,
+    IF,
+    ELSE,
+    RETURN,
+
+    // Booleans
+    TRUE,
+    FALSE,
+
+    // Comparition
+    EQ,
+    NOT_EQ,
 }
 
 impl Token {
@@ -46,6 +63,15 @@ pub fn lookup_ident(ident: &str) -> TokenType {
         // General Keywords
         "let" => TokenType::LET,
         "fn" => TokenType::FUNCTION,
+        "if" => TokenType::IF,
+        "else" => TokenType::ELSE,
+        "return" => TokenType::RETURN,
+        "true" => TokenType::TRUE,
+        "false" => TokenType::FALSE,
+
+        "==" => TokenType::EQ,
+        "!=" => TokenType::NOT_EQ,
+
 
         // Normal identifier
         _ => TokenType::IDENT,
