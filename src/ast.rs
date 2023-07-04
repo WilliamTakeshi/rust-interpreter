@@ -13,6 +13,7 @@ pub struct Program {
 // }
 
 
+#[derive(Debug)]
 pub enum Statement {
     Let(Identifier, Expr),
     Return(Expr),
@@ -21,6 +22,7 @@ pub enum Statement {
     None,
 }
 
+#[derive(Debug)]
 pub enum Expr {
     Bool(bool),
     Identifier(Identifier),
