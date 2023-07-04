@@ -1,4 +1,4 @@
-use crate::ast::{self, Statement, Expr};
+use crate::ast::{self, Expr, Statement};
 use crate::lexer::Lexer;
 use crate::token::{Token, TokenType};
 use std::mem;
@@ -47,15 +47,15 @@ impl Parser {
     fn parse_statement(&mut self) -> Option<ast::Statement> {
         match self.cur_token.token_type {
             TokenType::LET => self.parse_let_statement(),
+            TokenType::RETURN => self.parse_return_statement(),
             _ => return None,
-        }        
+        }
     }
 
     fn parse_let_statement(&mut self) -> Option<ast::Statement> {
         if !self.expect_peek(TokenType::IDENT) {
             return None;
         }
-
 
         let cur_token: Token = mem::replace(
             &mut self.cur_token,
@@ -77,8 +77,19 @@ impl Parser {
         //     Some(expr) => expr,
         //     None => ast::Expr::None,
         // };
-        
+
         Some(ast::Statement::Let(cur_token.literal.clone(), Expr::None))
+    }
+
+    fn parse_return_statement(&mut self) -> Option<ast::Statement> {
+        // Parse Expression
+        self.next_token();
+
+        while self.cur_token.token_type != TokenType::SEMICOLON {
+            self.next_token();
+        }
+
+        Some(ast::Statement::Return(Expr::None))
     }
 
     fn cur_token_is(&self, token_type: TokenType) -> bool {
@@ -96,8 +107,7 @@ impl Parser {
         } else {
             self.errors.push(Err(format!(
                 "Token {:?} expected, instead got {:?}!",
-                token_type,
-                self.peek_token.token_type
+                token_type, self.peek_token.token_type
             )));
             false
         }
@@ -113,8 +123,8 @@ mod tests {
     #[test]
     fn test_let_statement() {
         let input = "let x = 5;
-let y = 10;
-let foobar = 838383;";
+            let y = 10;
+            let foobar = 838383;";
 
         let lexer = Lexer::new(input.to_string());
         let mut parser = Parser::new(lexer);
@@ -143,5 +153,32 @@ let foobar = 838383;";
             }
             _ => assert!(false),
         };
+    }
+
+    #[test]
+    fn test_return_statement() {
+        let input = "return 5;
+return 10;
+return 993322;";
+
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program();
+
+        // Check for errors
+        for err in parser.errors.iter() {
+            println!("{:?}", err.as_ref().unwrap_err());
+        }
+        assert_eq!(parser.errors.len(), 0);
+
+        assert_eq!(program.statements.len(), 3);
+
+        for statement in program.statements.iter() {
+            match statement {
+                ast::Statement::Return(_) => (),
+                _ => assert!(false),
+            };
+        }
     }
 }
