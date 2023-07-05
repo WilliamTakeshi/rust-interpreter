@@ -1,7 +1,7 @@
 use std::fmt;
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TokenType {
     ILLEGAL,
     EOF,
