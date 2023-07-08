@@ -140,7 +140,7 @@ impl Parser {
             TokenType::INT => self.parse_integer_literal(),
             TokenType::BANG | TokenType::MINUS => self.parse_prefix_expression(),
             TokenType::TRUE | TokenType::FALSE => self.parse_boolean(),
-            // TokenType::LPAREN => self.parse_grouped_expression(),
+            TokenType::LPAREN => self.parse_grouped_expression(),
             // TokenType::IF => self.parse_if_expression(),
             // TokenType::FUNCTION => self.parse_function_literal(),
             // TokenType::STRING => self.parse_string_literal(),
@@ -170,17 +170,6 @@ impl Parser {
     fn peek_precedence(&self) -> Precedence {
         get_token_precedence(self.peek_token.token_type)
     }
-
-
-    // for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
-    //     infix := p.infixParseFns[p.peekToken.Type]
-    //     if infix == nil {
-    //     return leftExp
-    //     }
-    //     p.nextToken()
-    //     leftExp = infix(leftExp)
-    //     }
-    //     return leftExp
 
     fn parse_expr(&mut self, precedence: &mut Precedence) -> Option<ast::Expr> {
         let prefix_expr = self.parse_prefix(self.cur_token.token_type);
@@ -249,6 +238,23 @@ impl Parser {
             }
         };
         ast::Expr::Prefix(operator.to_string(), Box::new(right))
+    }
+
+    fn parse_grouped_expression(&mut self) -> ast::Expr {
+        self.next_token();
+
+        let exp = self.parse_expr(&mut Precedence::LOWEST);
+
+        if !self.expect_peek(TokenType::RPAREN) {
+            self.errors
+                .push(Err("Expected RPAREN to close LPAREN".to_string()));
+            return ast::Expr::None;
+        }
+
+        match exp {
+            Some(expr) => expr,
+            None => ast::Expr::None,
+        }
     }
 
     fn parse_boolean(&mut self) -> ast::Expr {
@@ -509,9 +515,9 @@ return 993322;";
             ("5 < 5;", ast::Expr::IntegerLiteral(5), TokenType::LT, ast::Expr::IntegerLiteral(5)),
             ("5 == 5;", ast::Expr::IntegerLiteral(5), TokenType::EQ, ast::Expr::IntegerLiteral(5)),
             ("5 != 5;", ast::Expr::IntegerLiteral(5), TokenType::NOT_EQ, ast::Expr::IntegerLiteral(5)),
-            // ("true != false;", ast::Expr::Bool(true), TokenType::NOT_EQ, ast::Expr::Bool(false)),
-            // ("false == false;", ast::Expr::Bool(false), TokenType::EQ, ast::Expr::Bool(false)),
-            // ("true == true;", ast::Expr::Bool(true), TokenType::EQ, ast::Expr::Bool(true)),
+            ("true != false;", ast::Expr::Bool(true), TokenType::NOT_EQ, ast::Expr::Bool(false)),
+            ("false == false;", ast::Expr::Bool(false), TokenType::EQ, ast::Expr::Bool(false)),
+            ("true == true;", ast::Expr::Bool(true), TokenType::EQ, ast::Expr::Bool(true)),
         ];
 
         for test in input.iter() {
@@ -538,5 +544,72 @@ return 993322;";
             }
         }
     }
+
+    #[test]
+    fn test_operator_precedence() {
+        let input = vec![
+            ("-a * b", "((-a) * b)"),
+            ("!-a", "(!(-a))"),
+            ("a + b + c", "((a + b) + c)"),
+            ("a * b * c", "((a * b) * c)"),
+            ("a * b / c", "((a * b) / c)"),
+            ("a + b / c", "(a + (b / c))"),
+            ("a + b * c + d / e - f", "(((a + (b * c)) + (d / e)) - f)"),
+            ("3 + 4; -5 * 5", "(3 + 4)\n((-5) * 5)"),
+            ("5 > 4 == 3 < 4", "((5 > 4) == (3 < 4))"),
+            ("5 < 4 != 3 > 4", "((5 < 4) != (3 > 4))"),
+            (
+                "3 + 4 * 5 == 3 * 1 + 4 * 5",
+                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+            ),
+            (
+                "3 + 4 * 5 == 3 * 1 + 4 * 5",
+                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+            ),
+            // ("true", "true"),
+            // ("false", "false"),
+            // ("3 > 5 == false", "((3 > 5) == false)"),
+            // ("3 < 5 != true", "((3 < 5) != true)"),
+            // ("1 + (2 + 3) + 4", "((1 + (2 + 3)) + 4)"),
+            // ("(5 + 5) * 2", "((5 + 5) * 2)"),
+            // ("2 / (5 + 5)", "(2 / (5 + 5))"),
+            // ("-(5 + 5)", "(-(5 + 5))"),
+            // ("!(true == true)", "(!(true == true))"),
+            // ("a + add(b * c) + d", "((a + add((b * c))) + d)"),
+            // (
+            //     "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+            //     "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+            // ),
+            // (
+            //     "add(a + b + c * d / f + g)",
+            //     "add((((a + b) + ((c * d) / f)) + g))",
+            // ),
+            // (
+            //     "a * [1, 2, 3, 4][b * c] * d",
+            //     "((a * ([1, 2, 3, 4][(b * c)])) * d)",
+            // ),
+            // (
+            //     "add(a * b[2], b[1], 2 * [1, 2][1])",
+            //     "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))",
+            // ),
+        ];
+
+        for test in input.iter() {
+            let lexer = Lexer::new(test.0.to_string());
+            let mut parser = Parser::new(lexer);
+
+            let program: Program = parser.parse_program();
+
+            // Check for errors
+            for err in parser.errors.iter() {
+                println!("{:?}", err.as_ref().unwrap_err());
+            }
+
+            assert_eq!(parser.errors.len(), 0);
+
+            assert_eq!(ast::program_to_string(&program), test.1);
+        }
+    }
+
 
 }

@@ -3,10 +3,13 @@ pub struct Program {
     pub statements: Vec<Statement>,
 }
 
-fn program_to_string(p: &Program) -> String {
+pub fn program_to_string(p: &Program) -> String {
     let mut output = String::new();
-    for (_index, statement) in p.statements.iter().enumerate() {
+    for (index, statement) in p.statements.iter().enumerate() {
         output += &statement_to_string(&statement);
+        if p.statements.len() - index != 1 {
+            output += "\n";
+        }
     }
 
     output
@@ -28,11 +31,16 @@ pub fn expression_to_string(expression: &Expr) -> String {
         Expr::Identifier(value) => format!("{}", value),
         Expr::IntegerLiteral(value) => format!("{}", value),
         Expr::String(value) => value.clone(),
+        Expr::Prefix(op, boxed_expr) => format!("({}{})", op, expression_to_string(boxed_expr)),
+        Expr::Infix(op, boxed_left, boxed_right) => format!(
+            "({} {} {})",
+            expression_to_string(boxed_left),
+            op,
+            expression_to_string(boxed_right)
+        ),
         // Expr::ArrayLiteral(Vec<Expr>),
         // Expr::Index(Box<Expr>, Box<Expr>), // Left, Index
         // Expr::HashLiteral(Vec<(Expr, Expr)>),
-        // Expr::Prefix(String, Box<Expr>),
-        // Expr::Infix(TokenType, Box<Expr>, Box<Expr>),
         // Expr::If(Box<Expr>, Box<Statement>, Option<Box<Statement>>),
         // Expr::FunctionLiteral(Vec<Identifier>, Box<Statement>),
         // Expr::CallExpression {
