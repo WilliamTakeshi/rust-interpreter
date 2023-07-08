@@ -136,9 +136,9 @@ impl Parser {
     fn parse_prefix(&mut self, token_type: TokenType) -> ast::Expr {
         match token_type {
             TokenType::IDENT => self.parse_identifier(),
-            // TokenType::INT => self.parse_integer_literal(),
-            // TokenType::BANG | TokenType::MINUS => self.parse_prefix_expression(),
-            // TokenType::TRUE | TokenType::FALSE => self.parse_boolean(),
+            TokenType::INT => self.parse_integer_literal(),
+            TokenType::BANG | TokenType::MINUS => self.parse_prefix_expression(),
+            TokenType::TRUE | TokenType::FALSE => self.parse_boolean(),
             // TokenType::LPAREN => self.parse_grouped_expression(),
             // TokenType::IF => self.parse_if_expression(),
             // TokenType::FUNCTION => self.parse_function_literal(),
@@ -203,6 +203,39 @@ impl Parser {
         ast::Expr::Identifier(cur_token.literal.clone())
     }
 
+    fn parse_integer_literal(&mut self) -> ast::Expr {
+        let value = self.cur_token.literal.parse();
+        match value {
+            Ok(expr) => ast::Expr::IntegerLiteral(expr),
+            Err(e) => {
+                self.errors.push(Err(e.to_string()));
+                ast::Expr::None
+            }
+        }
+    }
+
+    fn parse_prefix_expression(&mut self) -> ast::Expr {
+        let operator = self.cur_token.literal.clone();
+
+        self.next_token();
+
+        let right = match self.parse_expr(&mut Precedence::PREFIX) {
+            Some(expr) => expr,
+            None => {
+                self.errors.push(Err(format!(
+                    "No expression to the right of prefix {}",
+                    operator
+                )));
+                ast::Expr::None
+            }
+        };
+        ast::Expr::Prefix(operator.to_string(), Box::new(right))
+    }
+
+    fn parse_boolean(&mut self) -> ast::Expr {
+        ast::Expr::Bool(self.cur_token_is(TokenType::TRUE))
+    }
+
     fn cur_token_is(&self, token_type: TokenType) -> bool {
         self.cur_token.token_type == token_type
     }
@@ -231,6 +264,7 @@ mod tests {
     use super::Parser;
     use crate::ast::{self, Program};
     use crate::lexer::Lexer;
+    use crate::token::TokenType;
 
     #[test]
     fn test_let_statement() {
@@ -323,4 +357,167 @@ return 993322;";
             _ => assert!(false),
         }
     }
+
+    #[test]
+    fn test_integer_literal_expression() {
+        let input = "5;";
+
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        let mut program = parser.parse_program();
+
+        // Check for errors
+        for err in parser.errors.iter() {
+            println!("{:?}", err.as_ref().unwrap_err());
+        }
+
+        assert_eq!(parser.errors.len(), 0);
+
+        assert_eq!(program.statements.len(), 1);
+
+        let statement: ast::Statement = program.statements.pop().expect("Program has not enough statements!");
+        match statement {
+            ast::Statement::Expr(expr) => match expr {
+                ast::Expr::IntegerLiteral(value) => {
+                    assert_eq!(value, 5);
+                }
+                _ => assert!(false),
+            },
+            _ => assert!(false),
+        }
+    }
+
+    fn test_identifier(expr: &ast::Expr, expected: &String) {
+        match expr {
+            ast::Expr::Identifier(ident) => {
+                assert_eq!(ident, expected);
+            }
+            _ => assert!(false),
+        }
+    }
+
+    fn test_integer_literal(expr: &ast::Expr, expected: i32) {
+        match expr {
+            ast::Expr::IntegerLiteral(value) => assert_eq!(*value, expected),
+            _ => assert!(false),
+        }
+    }
+
+    fn test_expression(expr: &ast::Expr, expected: &ast::Expr) {
+        match expr {
+            ast::Expr::Identifier(_) => match expected {
+                ast::Expr::Identifier(ident) => test_identifier(expr, &ident),
+                _ => assert!(false),
+            },
+            ast::Expr::IntegerLiteral(_) => match expected {
+                ast::Expr::IntegerLiteral(i) => test_integer_literal(expr, *i),
+                _ => assert!(false),
+            },
+            ast::Expr::Bool(val) => match expected {
+                ast::Expr::Bool(val2) => assert_eq!(val, val2),
+                _ => assert!(false),
+            },
+            _ => assert!(false),
+        }
+    }
+    #[test]
+    fn test_parsing_prefix_expressions() {
+        let input = vec![
+            ("!5;", "!", ast::Expr::IntegerLiteral(5)),
+            ("-15;", "-", ast::Expr::IntegerLiteral(15)),
+            ("!true;", "!", ast::Expr::Bool(true)),
+            ("!false;", "!", ast::Expr::Bool(false)),
+        ];
+
+        for test in input.iter() {
+            let lexer = Lexer::new(test.0.to_string());
+            let mut parser = Parser::new(lexer);
+
+            let mut program = parser.parse_program();
+
+            // Check for errors
+            for err in parser.errors.iter() {
+                println!("{:?}", err.as_ref().unwrap_err());
+            }
+
+            assert_eq!(parser.errors.len(), 0);
+
+            assert_eq!(program.statements.len(), 1);
+
+            let statement = program.statements.pop().expect("Expected Statement!");
+            match statement {
+                ast::Statement::Expr(expr) => match expr {
+                    ast::Expr::Prefix(value, right) => {
+                        assert_eq!(value, test.1);
+                        test_expression(&right, &test.2);
+                    }
+                    _ => assert!(false),
+                },
+                _ => assert!(false),
+            }
+        }
+    }
+
+
+    fn test_infix_expression(
+        infix: &ast::Expr,
+        left: &ast::Expr,
+        operator: TokenType,
+        right: &ast::Expr,
+    ) {
+        match infix {
+            ast::Expr::Infix(op, box_left, box_right) => {
+                // Test Left Expression
+                test_expression(&box_left, left);
+                // Test Right Expression
+                test_expression(&box_right, right);
+                // Test Operator
+                assert_eq!(operator, *op);
+            }
+            _ => assert!(false),
+        }
+    }
+
+    #[test]
+    fn test_parsing_infix_expressions() {
+        let input = vec![
+            ("5 + 5;", ast::Expr::IntegerLiteral(5), TokenType::PLUS, ast::Expr::IntegerLiteral(5)),
+            ("5 - 5;", ast::Expr::IntegerLiteral(5), TokenType::MINUS, ast::Expr::IntegerLiteral(5)),
+            ("5 * 5;", ast::Expr::IntegerLiteral(5), TokenType::ASTERISK, ast::Expr::IntegerLiteral(5)),
+            ("5 / 5;", ast::Expr::IntegerLiteral(5), TokenType::SLASH, ast::Expr::IntegerLiteral(5)),
+            ("5 > 5;", ast::Expr::IntegerLiteral(5), TokenType::GT, ast::Expr::IntegerLiteral(5)),
+            ("5 < 5;", ast::Expr::IntegerLiteral(5), TokenType::LT, ast::Expr::IntegerLiteral(5)),
+            ("5 == 5;", ast::Expr::IntegerLiteral(5), TokenType::EQ, ast::Expr::IntegerLiteral(5)),
+            ("5 != 5;", ast::Expr::IntegerLiteral(5), TokenType::NOT_EQ, ast::Expr::IntegerLiteral(5)),
+            // ("true != false;", ast::Expr::Bool(true), TokenType::NOT_EQ, ast::Expr::Bool(false)),
+            // ("false == false;", ast::Expr::Bool(false), TokenType::EQ, ast::Expr::Bool(false)),
+            // ("true == true;", ast::Expr::Bool(true), TokenType::EQ, ast::Expr::Bool(true)),
+        ];
+
+        for test in input.iter() {
+            let lexer = Lexer::new(test.0.to_string());
+            let mut parser = Parser::new(lexer);
+
+            let mut program = parser.parse_program();
+
+            // Check for errors
+            for err in parser.errors.iter() {
+                println!("{:?}", err.as_ref().unwrap_err());
+            }
+
+            assert_eq!(parser.errors.len(), 0);
+
+            assert_eq!(program.statements.len(), 1);
+
+            let statement = program.statements.pop().expect("Expected Statement!");
+            match statement {
+                ast::Statement::Expr(expr) => {
+                    test_infix_expression(&expr, &test.1, test.2, &test.3)
+                }
+                _ => assert!(false),
+            }
+        }
+    }
+
 }
