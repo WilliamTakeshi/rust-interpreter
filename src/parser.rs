@@ -9,6 +9,7 @@ struct Parser {
     pub errors: Vec<Result<(), String>>,
 }
 
+#[derive(Debug, PartialEq, PartialOrd)]
 pub enum Precedence {
     LOWEST,
     EQUALS, // '==' or '!='
@@ -149,23 +150,41 @@ impl Parser {
         }
     }
 
-    // fn parse_infix(
-    //     &mut self,
-    //     left: ast::Expr,
-    //     token_type: TokenType,
-    // ) -> Result<ast::Expr, ast::Expr> {
-    //     match token_type {
-    //         TokenType::LPAREN => self.parse_call_expression(left),
-    //         // TokenType::LBRACKET => self.parse_index_expression(left),
-    //         _ => self.parse_infix_expression(left),
+    fn parse_infix_expression(&mut self, left: ast::Expr) -> Result<ast::Expr, ast::Expr> {
+        let mut precedence = self.curr_precedence();
+        let operator = self.cur_token.token_type;
+
+        self.next_token();
+        let right = match self.parse_expr(&mut precedence) {
+            Some(expr) => expr,
+            None => ast::Expr::None,
+        };
+
+        Ok(ast::Expr::Infix(operator, Box::new(left), Box::new(right)))
+    }
+
+    fn curr_precedence(&self) -> Precedence {
+        get_token_precedence(self.cur_token.token_type)
+    }
+
+    fn peek_precedence(&self) -> Precedence {
+        get_token_precedence(self.peek_token.token_type)
+    }
+
+
+    // for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
+    //     infix := p.infixParseFns[p.peekToken.Type]
+    //     if infix == nil {
+    //     return leftExp
     //     }
-    // }
+    //     p.nextToken()
+    //     leftExp = infix(leftExp)
+    //     }
+    //     return leftExp
 
     fn parse_expr(&mut self, precedence: &mut Precedence) -> Option<ast::Expr> {
         let prefix_expr = self.parse_prefix(self.cur_token.token_type);
-
-
-        match prefix_expr {
+        let mut left_expr = match prefix_expr {
             ast::Expr::None => {
                 self.errors.push(Err(format!(
                     "No Prefix found for: {:?}",
@@ -173,25 +192,25 @@ impl Parser {
                 )));
                 return None;
             }
-            _ => Some(prefix_expr),
+            _ => prefix_expr,
+        };
+
+        while !self.peek_token_is(&TokenType::SEMICOLON)
+        	// Check if the current precedence still doesn't overule the next one
+            && precedence < &mut self.peek_precedence()
+            // Check if INFIX operator (has a precedence)
+            && get_token_precedence(self.peek_token.token_type) != Precedence::LOWEST
+        {
+            self.next_token();
+            match self.parse_infix_expression(left_expr) {
+                Ok(result) => {
+                    left_expr = result;
+                }
+                Err(err) => return Some(err),
+            }
         }
 
-        // while !self.peek_token_is(&TokenType::SEMICOLON)
-        // 	// Check if the current precedence still doesn't overule the next one
-        //     && precedence < &mut self.peek_precedence()
-        //     // Check if INFIX operator (has a precedence)
-        //     && get_token_precedence((*self.peek_token).token_type) != Precedence::LOWEST
-        // {
-        //     self.next_token();
-        //     match self.parse_infix(left_expr, (*self.cur_token).token_type) {
-        //         Ok(result) => {
-        //             left_expr = result;
-        //         }
-        //         Err(err) => return Some(err),
-        //     }
-        // }
-
-        // Some(left_expr)
+        Some(left_expr)
     }
 
     fn parse_identifier(&mut self) -> ast::Expr {
