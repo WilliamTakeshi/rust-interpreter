@@ -38,11 +38,23 @@ pub fn expression_to_string(expression: &Expr) -> String {
             op,
             expression_to_string(boxed_right)
         ),
+        Expr::If(condition, if_block, else_block) => match else_block {
+            Some(box_else) => format!(
+                "if {} {} else {}",
+                expression_to_string(condition),
+                statement_to_string(if_block),
+                statement_to_string(box_else)
+            ),
+            None => format!(
+                "if {} {}",
+                expression_to_string(condition),
+                statement_to_string(if_block)
+            ),
+        },
+        // Expr::FunctionLiteral(Vec<Identifier>, Box<Statement>),
         // Expr::ArrayLiteral(Vec<Expr>),
         // Expr::Index(Box<Expr>, Box<Expr>), // Left, Index
         // Expr::HashLiteral(Vec<(Expr, Expr)>),
-        // Expr::If(Box<Expr>, Box<Statement>, Option<Box<Statement>>),
-        // Expr::FunctionLiteral(Vec<Identifier>, Box<Statement>),
         // Expr::CallExpression {
         //     function: Box<Expr>,
         //     arguments: Vec<Expr>,

@@ -141,7 +141,7 @@ impl Parser {
             TokenType::BANG | TokenType::MINUS => self.parse_prefix_expression(),
             TokenType::TRUE | TokenType::FALSE => self.parse_boolean(),
             TokenType::LPAREN => self.parse_grouped_expression(),
-            // TokenType::IF => self.parse_if_expression(),
+            TokenType::IF => self.parse_if_expression(),
             // TokenType::FUNCTION => self.parse_function_literal(),
             // TokenType::STRING => self.parse_string_literal(),
             // TokenType::LBRACKET => self.parse_array_literal(),
@@ -201,6 +201,67 @@ impl Parser {
 
         Some(left_expr)
     }
+
+    fn parse_block_statement(&mut self) -> ast::Statement {
+        let mut statements: Vec<ast::Statement> = vec![];
+
+        self.next_token();
+
+        while !self.cur_token_is(TokenType::RBRACE) {
+            match self.parse_statement() {
+                Some(statement) => statements.push(statement),
+                None => (),
+            }
+            self.next_token();
+        }
+
+        ast::Statement::BlockStatement(statements)
+    }
+
+    fn parse_if_expression(&mut self) -> ast::Expr {
+        if !self.expect_peek(TokenType::LPAREN) {
+            self.errors
+                .push(Err("Expected LPAREN after IF!".to_string()));
+            return ast::Expr::None;
+        }
+
+        self.next_token();
+        // Parse Condition
+        let condition = match self.parse_expr(&mut Precedence::LOWEST) {
+            Some(expr) => Box::new(expr),
+            None => Box::new(ast::Expr::None),
+        };
+
+        if !self.expect_peek(TokenType::RPAREN) {
+            self.errors
+                .push(Err("Expected RPAREN after IF condition!".to_string()));
+            return ast::Expr::None;
+        }
+        // Parse Consequence (if then)
+        if !self.expect_peek(TokenType::LBRACE) {
+            self.errors.push(Err(
+                "Expected BlockStatement after IF condition!".to_string()
+            ));
+            return ast::Expr::None;
+        }
+
+        let consequence = Box::new(self.parse_block_statement());
+
+        // Parse Alternative (else)
+        let alternative = if self.peek_token_is(&TokenType::ELSE) {
+            self.next_token();
+            if !self.expect_peek(TokenType::LBRACE) {
+                None
+            } else {
+                Some(Box::new(self.parse_block_statement()))
+            }
+        } else {
+            None
+        };
+
+        ast::Expr::If(condition, consequence, alternative)
+    }
+
 
     fn parse_identifier(&mut self) -> ast::Expr {
         let cur_token = mem::replace(
@@ -608,6 +669,125 @@ return 993322;";
             assert_eq!(parser.errors.len(), 0);
 
             assert_eq!(ast::program_to_string(&program), test.1);
+        }
+    }
+
+
+    #[test]
+    fn test_if_expression() {
+        let input = "if (x < y) { x };";
+
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        let mut program = parser.parse_program();
+
+        // Check for errors
+        for err in parser.errors.iter() {
+            println!("{:?}", err.as_ref().unwrap_err());
+        }
+
+        assert_eq!(parser.errors.len(), 0);
+
+        assert_eq!(program.statements.len(), 1);
+
+        let statement = program.statements.pop().expect("Expected Statement!");
+        match statement {
+            ast::Statement::Expr(expr) => match expr {
+                ast::Expr::If(condition, if_block, else_option) => {
+                    // Test the condition
+                    test_infix_expression(&condition, &ident("x"), TokenType::LT, &ident("y"));
+
+                    // Check the if block
+                    match *if_block {
+                        ast::Statement::BlockStatement(mut vec) => {
+                            assert_eq!(vec.len(), 1);
+                            match vec.pop().expect("Nothing in Vec") {
+                                ast::Statement::Expr(expr) => {
+                                    test_identifier(&expr, &"x".to_string())
+                                }
+                                _ => assert!(false),
+                            }
+                        }
+                        _ => assert!(false),
+                    };
+
+                    // Make sure else is empty
+                    match else_option {
+                        Some(_) => assert!(false),
+                        None => (),
+                    }
+                }
+                _ => assert!(false),
+            },
+            _ => assert!(false),
+        }
+    }
+
+    fn ident(value: &str) -> ast::Expr {
+        ast::Expr::Identifier(value.to_string())
+    }
+
+
+    #[test]
+    fn test_if_else_expression() {
+        let input = "if (x < y) { x } else { y };";
+
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        let mut program = parser.parse_program();
+
+        // Check for errors
+        for err in parser.errors.iter() {
+            println!("{:?}", err.as_ref().unwrap_err());
+        }
+
+        assert_eq!(parser.errors.len(), 0);
+
+        assert_eq!(program.statements.len(), 1);
+
+        let statement = program.statements.pop().expect("Expected Statement!");
+        match statement {
+            ast::Statement::Expr(expr) => match expr {
+                ast::Expr::If(condition, if_block, else_option) => {
+                    // Test the condition
+                    test_infix_expression(&condition, &ident("x"), TokenType::LT, &ident("y"));
+
+                    // Check the if block
+                    match *if_block {
+                        ast::Statement::BlockStatement(mut vec) => {
+                            assert_eq!(vec.len(), 1);
+                            match vec.pop().expect("Nothing in Vec") {
+                                ast::Statement::Expr(expr) => {
+                                    test_identifier(&expr, &"x".to_string())
+                                }
+                                _ => assert!(false),
+                            }
+                        }
+                        _ => assert!(false),
+                    };
+
+                    // Check Else Block
+                    match else_option {
+                        Some(else_block) => match *else_block {
+                            ast::Statement::BlockStatement(mut vec) => {
+                                assert_eq!(vec.len(), 1);
+                                match vec.pop().expect("Nothing in Vec") {
+                                    ast::Statement::Expr(expr) => {
+                                        test_identifier(&expr, &"y".to_string())
+                                    }
+                                    _ => assert!(false),
+                                }
+                            }
+                            _ => assert!(false),
+                        },
+                        None => assert!(false),
+                    }
+                }
+                _ => assert!(false),
+            },
+            _ => assert!(false),
         }
     }
 
